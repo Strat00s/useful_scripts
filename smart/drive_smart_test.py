@@ -250,7 +250,7 @@ def probe_device(dev):
         info["self_test_supported"] = True
     elif data.get("ata_smart_attributes") or info["protocol"].upper() == "SATA":
         info["self_test_supported"] = bool(
-            (data.get("self_test") or {}).get("supported", False)
+            (data.get("ata_smart_data") or {}).get("capabilities", {}).get("self_tests_supported", False)
         )
     else:
         # SCSI / SAS / unknown: smartctl states support in the selftest log.
@@ -387,7 +387,7 @@ def launch_test(dev, test):
     Start one self-test. Returns (state, message):
       started / attached (join a test already running) / skipped / error
     """
-    res = run(["smartctl", "-d,auto", "-t", SMARTCTL_NAME[test], dev])
+    res = run(["smartctl", "-d","auto", "-t", SMARTCTL_NAME[test], dev])
     if res is None:
         return "error", "smartctl launch failed to run"
 
