@@ -18,6 +18,8 @@ Behaviour notes:
     timeout derived from smartctl's own estimated polling times guards
     against drives that never update the log.
   * Ctrl-C aborts any started tests (smartctl -X) before exiting.
+  * Colors follow tty detection: piping or redirecting output produces plain
+    text. --color overrides that and emits ANSI color codes anyway.
 
 Requirements: root privileges, smartmontools (`smartctl`), `lsblk` (utillinux).
 Exit status: 0 = all launched tests completed without error (skips allowed),
@@ -54,6 +56,22 @@ class Colors:
 
 
 USE_COLOR = sys.stdout.isatty()
+
+
+def configure_color(force=None):
+    """
+    Resolve whether ANSI color codes are emitted.
+
+    By default colors follow tty detection (stdout piped/redirected -> plain).
+    `force=True` overrides that and emits colors anyway (used by --color, e.g.
+    for `drive_smart_test.py --color -t short | less -R`); `force=False`
+    suppresses them; `force=None` leaves the detected value untouched.
+    Returns the resulting setting.
+    """
+    global USE_COLOR
+    if force is not None:
+        USE_COLOR = bool(force)
+    return USE_COLOR
 
 
 def colorize(text, color_code):
@@ -755,6 +773,11 @@ def build_parser():
         "-s", "--sequential", action="store_true",
         help="test one drive at a time instead of all drives concurrently",
     )
+    p.add_argument(
+        "-c", "--color", action="store_true",
+        help="force ANSI colors even when stdout is not a terminal "
+             "(piped / redirected output; pair with 'less -R' or 'bat')",
+    )
     return p
 
 
@@ -794,6 +817,7 @@ def collect_targets(args):
 
 def main():
     args = build_parser().parse_args()
+    configure_color(True if args.color else None)
     test_name = "long" if args.test in ("long", "extended") else "short"
     args.test = test_name  # normalize: "extended" -> smartctl "long"
 
