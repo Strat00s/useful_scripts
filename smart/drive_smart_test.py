@@ -316,14 +316,20 @@ def extract_entries(data):
 def entry_fields(entry):
     """Normalize (status_string, passed, remaining_percent) from one entry."""
     status = entry.get("status")
+    remaining = None
+
     if isinstance(status, dict):
         status_str = status.get("string", "")
         passed = status.get("passed")
+        remaining = status.get("remaining_percent")
     else:
         status_str = entry.get("status_string") or entry.get("desc") or ""
         passed = entry.get("passed")
 
-    remaining = entry.get("remaining_percent")
+    # Fallback just in case some NVMe controllers place it at the root
+    if remaining is None:
+        remaining = entry.get("remaining_percent")
+
     return str(status_str), passed, remaining
 
 
@@ -349,10 +355,21 @@ def read_selftest(dev):
     Return (latest_entry_or_None, nvme_activity, raw) for a device.
     latest_entry is None when the drive has no log entries yet.
     """
-    data = run_json(["smartctl", "-l", "selftest", "--json", dev])
+    # 1. Add '-c' to the command to fetch the real-time execution capabilities
+    data = run_json(["smartctl", "-c", "-l", "selftest", "--json", dev])
     if data is None:
         return None, None, None
+
     entries, activity = extract_entries(data)
+
+    # 2. Extract the live execution status (which bypasses the buggy log table)
+    exec_status = data.get("ata_smart_data", {}).get("self_test", {}).get("status", {})
+    status_str = exec_status.get("string", "")
+
+    # 3. If there is a valid execution status, prepend it as the most authoritative entry
+    if status_str and "was never started" not in status_str.lower():
+        entries.insert(0, {"status": exec_status})
+
     return (entries[0] if entries else None), activity, data
 
 
